@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ანი და ბექა · სამახსოვრო ფოტოები</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;600;700&family=Noto+Serif+Georgian:wght@400&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#faf8f3;--ink:#3c2828;--gold:#96784a;--line:#e4d9c6;--heart:#dc1e3c;--ok:#4f7a4a;--err:#b3261e}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Noto Sans Georgian",system-ui,sans-serif;min-height:100vh;display:flex;justify-content:center;padding:40px 20px 56px}
+main{width:100%;max-width:460px;text-align:center}
+.mono{width:92px;height:92px;margin:0 auto 14px;border:2px solid #bea06e;border-radius:50%;display:grid;place-items:center;font:400 28px "Noto Serif Georgian",Georgia,serif;color:var(--gold);letter-spacing:.02em}
+.names{margin:0 0 26px;font:400 20px "Noto Serif Georgian",Georgia,serif;color:var(--gold)}
+h1{font-size:clamp(22px,6vw,28px);line-height:1.45;font-weight:700;margin:0 0 8px}
+h1 span{color:var(--heart)}
+.sub{margin:0 0 28px;font-size:15px;color:#6b5a52}
+.pick{display:block;width:100%;padding:22px 16px;border:2px dashed var(--gold);border-radius:14px;background:transparent;color:var(--gold);font:600 17px inherit;font-family:inherit;cursor:pointer}
+.pick:hover,.pick:focus-visible{background:#f3ecdd;outline:none}
+.pick:focus-visible{box-shadow:0 0 0 3px #bea06e66}
+input[type=file]{display:none}
+#grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:20px 0 0}
+.t{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--line)}
+.t img{width:100%;height:100%;object-fit:cover;display:block}
+.t .bar{position:absolute;left:0;bottom:0;height:5px;width:0;background:var(--gold)}
+.t .st{position:absolute;inset:0;display:none;place-items:center;font-size:26px;color:#fff;background:#0006}
+.t.done .st{display:grid;background:#4f7a4acc}
+.t.fail .st{display:grid;background:#b3261ecc}
+.t.done .bar{width:100%;background:var(--ok)}
+#go{margin-top:20px;width:100%;padding:16px;border:0;border-radius:14px;background:var(--ink);color:#fff;font:700 17px inherit;font-family:inherit;cursor:pointer}
+#go:disabled{opacity:.4;cursor:default}
+#go:focus-visible{outline:3px solid #bea06e;outline-offset:2px}
+#msg{min-height:24px;margin:16px 0 0;font-size:15px}
+#msg.ok{color:var(--ok);font-weight:600}
+#msg.err{color:var(--err)}
+.hide{display:none}
+@media (prefers-reduced-motion:no-preference){.t .bar{transition:width .2s}}
+</style>
+</head>
+<body>
+<main>
+  <div class="mono" aria-hidden="true">A&amp;B</div>
+  <p class="names">ანი და ბექა</p>
+  <h1>გადაიღეთ ბევრი სამახსოვრო ფოტო და ატვირთეთ აქ <span aria-hidden="true">❤</span></h1>
+  <p class="sub">აირჩიეთ ფოტოები გალერეიდან ან გადაიღეთ ახალი.</p>
+
+  <button class="pick" id="pick" type="button">ფოტოების არჩევა</button>
+  <input id="file" type="file" accept="image/*" multiple>
+
+  <div id="grid"></div>
+  <button id="go" type="button" class="hide" disabled>ატვირთვა</button>
+  <p id="msg" role="status" aria-live="polite"></p>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const fileInput = $("file"), grid = $("grid"), go = $("go"), msg = $("msg");
+let queue = [];
+
+$("pick").onclick = () => fileInput.click();
+
+fileInput.onchange = () => {
+  for (const f of fileInput.files) {
+    const el = document.createElement("div");
+    el.className = "t";
+    el.innerHTML = '<span class="st"></span><div class="bar"></div>';
+    if (f.type.startsWith("image/")) {
+      const img = new Image();
+      img.alt = "";
+      img.src = URL.createObjectURL(f);
+      el.prepend(img);
+    } else {
+      el.style.cssText += ";display:grid;place-items:center;font-size:12px";
+      el.prepend(document.createTextNode("ვიდეო"));
+    }
+    grid.appendChild(el);
+    queue.push({ f, el, state: "wait" });
+  }
+  fileInput.value = "";
+  refresh();
+};
+
+function refresh() {
+  const waiting = queue.filter(q => q.state === "wait" || q.state === "fail").length;
+  go.classList.toggle("hide", queue.length === 0);
+  go.disabled = waiting === 0;
+  go.textContent = waiting ? "ატვირთვა (" + waiting + ")" : "ატვირთვა";
+}
+
+async function shrink(f) {
+  try {
+    const bmp = await createImageBitmap(f, { imageOrientation: "from-image" });
+    const k = Math.min(1, 2200 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    return await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+  } catch (e) { return f; }
+}
+
+async function upload(item) {
+  const { f, el } = item;
+  const bar = el.querySelector(".bar"), st = el.querySelector(".st");
+  const fail = () => { item.state = "fail"; el.classList.add("fail"); st.textContent = "!"; bar.style.width = "0"; };
+  el.classList.remove("fail");
+  item.state = "busy";
+  const blob = await shrink(f);
+  if (!blob || blob.size > 5.5 * 1024 * 1024) { fail(); return; }
+  return new Promise(resolve => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload");
+    xhr.setRequestHeader("Content-Type", blob.type || "image/jpeg");
+    xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = (e.loaded / e.total * 100) + "%"; };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) { item.state = "done"; el.classList.add("done"); st.textContent = "✓"; }
+      else fail();
+      resolve();
+    };
+    xhr.onerror = () => { fail(); resolve(); };
+    xhr.send(blob);
+  });
+}
+
+go.onclick = async () => {
+  go.disabled = true; $("pick").disabled = true;
+  msg.className = ""; msg.textContent = "მიმდინარეობს ატვირთვა... გთხოვთ, ეს გვერდი არ დახუროთ.";
+  const todo = queue.filter(q => q.state === "wait" || q.state === "fail");
+  let i = 0;
+  const worker = async () => { while (i < todo.length) await upload(todo[i++]); };
+  await Promise.all([worker(), worker(), worker()]);
+  $("pick").disabled = false;
+  const failed = queue.filter(q => q.state === "fail").length;
+  if (failed) { msg.className = "err"; msg.textContent = failed + " ფაილი ვერ აიტვირთა. სცადეთ თავიდან ღილაკზე დაჭერით."; }
+  else { msg.className = "ok"; msg.textContent = "მადლობა! თქვენი ფოტოები აიტვირთა ❤"; }
+  refresh();
+};
+</script>
+</body>
+</html>
